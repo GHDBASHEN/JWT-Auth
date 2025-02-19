@@ -1,24 +1,21 @@
-// app.js 
-
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 
-
 const app = express();
-const PORT = process.env.PORT ||3000;
+const PORT = process.env.PORT || 3000;
 const SECRET_KEY = 'xxxx-xxxx';
+const REFRESH_SECRET_KEY = 'refresh-xxxx-xxxx';
 
 app.use(express.json());
 
-// This will act as our 'database'
+// 'Database'
 let users = [];
+let refreshTokens = [];
 
 // Register route
 async function register(username, email, password) {
-    // Hash the password
     const hashedPassword = await bcrypt.hash(password, 8);
-    // Save the user
     users.push({ username, password: hashedPassword, email });
     console.log('User registered Successfully.');
     return true;
@@ -26,35 +23,44 @@ async function register(username, email, password) {
 
 // Login route
 async function login(email, password) {
-    // Find the user
     const user = users.find(user => user.email == email);
     if (!user) {
-        console.log('User not found.')
+        console.log('User not found.');
         return null;
     }
-    // Check the password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
         console.log('Invalid credentials');
         return null;
     }
-    console.log('User Details', user, '\n')
-    // Generate a JWT
-    const token = jwt.sign(
-        { email },
-        SECRET_KEY,
-        { expiresIn: '1h' });
-    console.log('Token', token, '\n')
-    return token;
+    const accessToken = jwt.sign({ email }, SECRET_KEY, { expiresIn: '1h' });
+    const refreshToken = jwt.sign({ email }, REFRESH_SECRET_KEY, { expiresIn: '7d' });
+
+    refreshTokens.push(refreshToken); // Store refresh token
+    console.log('Access Token:', accessToken, '\n');
+    console.log('Refresh Token:', refreshToken, '\n');
+    return { accessToken, refreshToken };
 }
 
-// register a user 
-register('Sandeep', 'ex@gmail.com', 'exm123')
+// Refresh token endpoint
+app.post('/token', (req, res) => {
+    const { refreshToken } = req.body;
+    if (!refreshToken || !refreshTokens.includes(refreshToken)) {
+        return res.status(403).json({ message: 'Refresh token not found or invalid.' });
+    }
+    jwt.verify(refreshToken, REFRESH_SECRET_KEY, (err, user) => {
+        if (err) return res.sendStatus(403);
+        const newAccessToken = jwt.sign({ email: user.email }, SECRET_KEY, { expiresIn: '1h' });
+        res.json({ accessToken: newAccessToken });
+    });
+});
 
+// Register and Login
+register('Sandeep', 'ex@gmail.com', 'exm123');
 setTimeout(() => {
-    login('ex@gmail.com', 'exm123')
-}, 5000); // after 5 second login 
+    login('ex@gmail.com', 'exm123');
+}, 5000);
 
 app.listen(PORT, () => {
-    console.log(`Server is running  ${PORT}`);
+    console.log(`Server is running on ${PORT}`);
 });
